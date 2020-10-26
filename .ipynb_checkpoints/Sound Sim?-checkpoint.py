@@ -9,36 +9,27 @@ import wave
 import pyaudio
 
 sound_speed = 343
-chunk_size = 100
+chunk_size = 128
 
 #sd.play(y, sample_rate)
 #sd.wait()
 
 #sample_rate, old_data = wavfile.read("blah-blah-blah.wav")
 inFile = wave.open("blah-blah-blah.wav", "rb")
-sample_rate = inFile.getframerate()
-# instantiate PyAudio (1)
+shrink_size = 1
+sample_rate = int(inFile.getframerate()/shrink_size)
+
 p = pyaudio.PyAudio()
-# open stream (2)
-stream = p.open(format=p.get_format_from_width(inFile.getsampwidth()), channels=inFile.getnchannels(), rate=inFile.getframerate(), output=True)
+
+stream = p.open(format=p.get_format_from_width(inFile.getsampwidth()), channels=1, rate=sample_rate, output=True)
 
 data = inFile.readframes(inFile.getnframes())
 data_arr = np.fromstring(data, dtype='int16')
 data_arr = (data_arr.reshape((inFile.getnframes(), 2))).astype("int16")
-# play stream (3)
-a = np.array([0, 1, 2, 3, 4, 5])
-for i in range(0,10):
-    a = np.insert(a, 1, 0)
-    a = np.delete(a, 5)
-    print(a)
-    print(len(a))
+data_arr = data_arr[:,0][::shrink_size]
+print(data_arr.shape)
 
-#stream.write(data)
-
-"""for i in range(0, len(data)-1, chunk_size):
-    chunk = data[i:i+chunk_size]
-    stream.write(chunk)"""
-
+stream.write(data_arr.tostring())
 
 def calc_dist(loc1, loc2):
     return math.sqrt((loc1[0]-loc2[0])**2 + (loc1[1]-loc2[1])**2)
@@ -52,11 +43,17 @@ class Environment:
         self.avatars[name] = Avatar(loc)
 
     def chunk_at_loc(self, loc, listener):
-        total_amp = 0
+        total_chunk = np.zeros(chunk_size)
         for name in self.avatars:
             if self.avatars[name] != listener:
-                total_amp += self.avatars[name].sound.hear_amp(calc_dist(loc, self.avatars[name].loc))
-        return total_amp
+                try:
+                    distance = calc_dist(loc, self.avatars[name].loc)
+                    start_index = int(distance/sound_speed*sample_rate)
+                    chunk = np.array(self.avatars[name].sound.past_vals[start_index:start_index+chunk_size])/(distance**2)
+                    total_chunk = np.add(total_chunk, chunk)
+                except IndexError:
+                    placeholder
+        return total_chunk
 
 
 env = Environment()
@@ -65,24 +62,14 @@ numExceptions = 0
 
 class Sound:
     def __init__(self, loc):
-        self.past_vals = []
+        self.storage_size = 2048
+        self.past_vals = np.zeros(self.storage_size)
         self.loc = loc
 
-    def add_amp(self, amp):
-        self.past_vals.insert(0, amp)
-        if len(self.past_vals) > 10000:
-            #print(len(self.past_vals))
-            self.past_vals.pop(len(self.past_vals)-1)
-            #print(len(self.past_vals))
-
-    def hear_amp(self, distance):
-        try:
-            #print(int(distance/sound_speed*sample_rate))
-            return self.past_vals[int(distance/sound_speed*sample_rate)]/(distance**2)
-        except IndexError:
-            #global numExceptions 
-            #numExceptions += 1
-            return 0
+    def add_chunk(self, chunk):
+        self.past_vals = np.insert(self.past_vals, 0, chunk)
+        if len(self.past_vals) > self.storage_size:
+            self.past_vals = np.delete(self.past_vals, np.s_[len(self.past_vals)-chunk_size-1:len(self.past_vals)-1])
 
 
 class Avatar:
@@ -91,21 +78,19 @@ class Avatar:
         self.sound = Sound(loc)
 
     def play_current_chunk(self):
-        batch = env.chunk_at_loc(self.loc, self)
-        out_str = np.array(frame).tostring()
+        chunk = env.chunk_at_loc(self.loc, self)
+        out_str = chunk.tostring()
         stream.write(out_str)
     
 
 env.add_avatar("jeff", (0,0))
 env.add_avatar("bob", (0,1))
 
-#print(env.avatars)
 
-for i in data_arr:
-    env.avatars["jeff"].sound.add_amp(i)
-    env.avatars["bob"].play_current_frame()
-
-print(numExceptions)
+for i in range(len(data_arr))[::chunk_size]:
+    #print(i)
+    env.avatars["jeff"].sound.add_chunk(data_arr[i:i+chunk_size])
+    env.avatars["bob"].play_current_chunk()
 # stop stream (4)
 stream.stop_stream()
 stream.close()
@@ -113,3 +98,11 @@ stream.close()
 inFile.close()
 # close PyAudio (5)
 p.terminate()
+
+"""
+Problems:
+1. Weird interference noises 
+2. Is slowed down by a factor of 4 when fed through program
+
+
+"""
