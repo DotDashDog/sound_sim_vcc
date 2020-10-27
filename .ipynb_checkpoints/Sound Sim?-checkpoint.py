@@ -78,13 +78,13 @@ class Avatar:
         self.sound = Sound(loc)
 
     def play_current_chunk(self):
-        chunk = env.chunk_at_loc(self.loc, self)
+        chunk = env.chunk_at_loc(self.loc, self).astype("int16")
         out_str = chunk.tostring()
         stream.write(out_str)
     
 
 env.add_avatar("jeff", (0,0))
-env.add_avatar("bob", (0,1))
+env.add_avatar("bob", (0,2.5))
 
 
 for i in range(len(data_arr))[::chunk_size]:
@@ -101,8 +101,7 @@ p.terminate()
 
 """
 Problems:
-1. Weird interference noises 
-2. Is slowed down by a factor of 4 when fed through program
+1. Weird fuzziness on noninteger distance values
 
 
 """
