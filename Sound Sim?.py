@@ -1,31 +1,25 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-#import sounddevice as sd
-#import time
-#from scipy.io import wavfile
 import wave
 #import soundcard as sc
 import pyaudio
 
 sound_speed = 343
-chunk_size = 32
-mic_channels = 1
+chunk_size = 1
+mic_channels = 1 
 speaker_channels = 2
-str_format = pyaudio.paInt16
-record_secs = 20
+in_str_format = pyaudio.paInt16
+out_str_format = pyaudio.paInt16
+record_secs = 10
 shrink_size = 2
 
-#sd.play(y, sample_rate)
-#sd.wait()
-
-#sample_rate, old_data = wavfile.read("blah-blah-blah.wav")
 inFile = wave.open("blah-blah-blah.wav", "rb")
 sample_rate = int(inFile.getframerate()/shrink_size)
 
 p = pyaudio.PyAudio()
 
-stream = p.open(format=p.get_format_from_width(inFile.getsampwidth()), channels=speaker_channels, rate=sample_rate, output=True)
+stream = p.open(format=out_str_format, channels=speaker_channels, rate=int(sample_rate), output=True)
 
 file_data = inFile.readframes(inFile.getnframes())
 data_arr = np.frombuffer(file_data, dtype='int16')
@@ -36,7 +30,7 @@ data_arr = data_arr[:,0][::shrink_size]
 
 def start_mic_stream():
     global mic_stream
-    mic_stream = p.open(format=str_format, channels=mic_channels, rate=sample_rate, input=True, frames_per_buffer=chunk_size)
+    mic_stream = p.open(format=in_str_format, channels=mic_channels, rate=sample_rate, input=True, frames_per_buffer=chunk_size)
 start_mic_stream()
 
 def calc_dist(loc1, loc2):
@@ -85,16 +79,25 @@ class Avatar:
     def __init__(self, loc):
         self.loc = loc
         self.sound = Sound(loc)
-
+        self.ear_dist = 0.075
+        self.rotation = 0
+        self.x_ear_dist = self.ear_dist*math.sin(self.rotation)
+        self.y_ear_dist = self.ear_dist*math.cos(self.rotation)
+        self.ear_1_loc = (self.loc[0]-self.x_ear_dist, self.loc[1]-self.y_ear_dist)
+        self.ear_2_loc = (self.loc[0]+self.x_ear_dist, self.loc[1]+self.y_ear_dist)
+        print(self.ear_1_loc)
+        print(self.ear_2_loc)
+        print("\n")
+        
     def play_current_chunk(self):
-        chunk = np.vstack((env.chunk_at_loc(self.loc, self), env.chunk_at_loc((self.loc[0], self.loc[1]-2), self))).astype("int16")
+        #chunk = np.vstack((env.chunk_at_loc(self.ear_1_loc, self), env.chunk_at_loc(self.ear_2_loc, self))).astype("int16")
+        chunk = env.chunk_at_loc(self.loc, self).astype("int16")
         out_str = chunk.tostring()
         stream.write(out_str)
     
 
-env.add_avatar("talker1", (0, 3))
-env.add_avatar("talker2", (0, -3))
-env.add_avatar("listener", (0, 0))
+env.add_avatar("talker1", (0, 0))
+env.add_avatar("listener", (0, 1))
 
 """
 #Play from array
@@ -119,7 +122,8 @@ for i in range(len(data_arr))[::chunk_size]:
 
 for i in range(0, int(sample_rate / chunk_size * record_secs)):
     try:
-        data = np.frombuffer(mic_stream.read(chunk_size), dtype='int16')
+        #data = np.frombuffer(mic_stream.read(chunk_size), dtype='int16')
+        data = data_arr[i:i+chunk_size]
     except OSError:
         print("Exception")
         data = np.zeros(chunk_size)
