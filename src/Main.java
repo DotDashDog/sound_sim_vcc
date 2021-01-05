@@ -11,7 +11,7 @@ public class Main {
         a.setVisible(true);
         device.setFullScreenWindow(a);
         while (true) {
-            a.repaint();
+            a.paint(a.getGraphics());
         }
     }
 }
